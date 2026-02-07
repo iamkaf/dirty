@@ -1,0 +1,43 @@
+# dirty
+
+A fast CLI that scans a directory for git repos and shows which ones have uncommitted changes and which are local-only (no remote).
+
+```
+$ dirty ~/code -L 3
+ * apps/athena
+   apps/beam
+ * apps/create-minecraft-mod
+   apps/mapo [local]
+ * experiments/tui [local]
+   libraries/splitdown
+ * meta/dotfiles
+ * tools/dirty [local]
+
+64 repos, 19 dirty, 10 local-only
+```
+
+- `*` — repo has uncommitted changes (red)
+- `[local]` — repo has no remotes configured (yellow)
+
+## Install
+
+```sh
+cargo install --git https://github.com/iamkaf/dirty
+```
+
+## Usage
+
+```
+dirty <path>            # scan immediate subdirectories
+dirty -L 3 <path>       # scan up to 3 levels deep
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-L` | `1` | Max directory depth to search for repos |
+
+## How it works
+
+1. Walks directories up to the specified depth looking for `.git` folders
+2. Inspects each repo in parallel using libgit2 (via [git2](https://crates.io/crates/git2)) and [rayon](https://crates.io/crates/rayon)
+3. Checks for uncommitted/untracked changes and whether any remotes exist

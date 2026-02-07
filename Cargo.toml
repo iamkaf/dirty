@@ -1,0 +1,13 @@
+[package]
+name = "dirty"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+git2 = "0.20"
+rayon = "1"
+
+[profile.release]
+lto = true
+strip = true
