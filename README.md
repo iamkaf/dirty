@@ -4,16 +4,16 @@ A fast CLI that scans a directory for git repos and shows which ones have uncomm
 
 ```
 $ dirty ~/code
- * apps/athena
-   apps/beam
- * apps/create-minecraft-mod
-   apps/mapo [local]
- * experiments/tui [local]
-   libraries/splitdown
- * meta/dotfiles
- * tools/dirty [local]
+ * apps/dashboard
+   apps/storefront
+ * libs/ui-kit [local]
+   libs/common
+ * services/auth
+   services/payments
+   tools/cli [local]
+ * tools/scripts [local]
 
-64 repos, 19 dirty, 10 local-only
+8 repos, 4 dirty, 3 local-only
 ```
 
 - `*` — repo has uncommitted changes (red)
