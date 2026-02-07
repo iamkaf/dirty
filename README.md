@@ -30,11 +30,15 @@ cargo install --git https://github.com/iamkaf/dirty
 ```
 dirty <path>            # scan immediate subdirectories
 dirty -L 3 <path>       # scan up to 3 levels deep
+dirty -L 3 --dirty <path>   # only dirty repos
+dirty -L 3 --local <path>   # only local-only repos
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-L` | `1` | Max directory depth to search for repos |
+| `--dirty` | off | Only show repos with uncommitted changes |
+| `--local` | off | Only show repos with no remotes |
 
 ## How it works
 

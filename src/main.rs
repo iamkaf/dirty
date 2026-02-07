@@ -13,6 +13,14 @@ struct Args {
     /// Max depth to search for repos
     #[arg(short = 'L', default_value = "1")]
     depth: usize,
+
+    /// Only show dirty repos
+    #[arg(long)]
+    dirty: bool,
+
+    /// Only show local-only repos (no remotes)
+    #[arg(long)]
+    local: bool,
 }
 
 struct RepoInfo {
@@ -80,6 +88,16 @@ fn main() {
 
     if infos.is_empty() {
         eprintln!("No git repos found in {}", base.display());
+        return;
+    }
+
+    let infos: Vec<_> = infos
+        .into_iter()
+        .filter(|i| (!args.dirty || i.dirty) && (!args.local || i.local_only))
+        .collect();
+
+    if infos.is_empty() {
+        eprintln!("No matching repos found");
         return;
     }
 
