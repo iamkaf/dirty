@@ -3,7 +3,7 @@
 A fast CLI that scans a directory for git repos and shows which ones have uncommitted changes and which are local-only (no remote).
 
 ```
-$ dirty ~/code -L 3
+$ dirty ~/code
  * apps/athena
    apps/beam
  * apps/create-minecraft-mod
@@ -28,17 +28,19 @@ cargo install --git https://github.com/iamkaf/dirty
 ## Usage
 
 ```
-dirty <path>            # scan immediate subdirectories
-dirty -L 3 <path>       # scan up to 3 levels deep
-dirty -L 3 --dirty <path>   # only dirty repos
-dirty -L 3 --local <path>   # only local-only repos
+dirty <path>              # scan (default depth: 3)
+dirty -L 1 <path>         # scan immediate subdirectories only
+dirty -d <path>           # only dirty repos
+dirty -l <path>           # only local-only repos
+dirty -dlr <path>         # dirty + local, raw paths for piping
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-L` | `1` | Max directory depth to search for repos |
-| `--dirty` | off | Only show repos with uncommitted changes |
-| `--local` | off | Only show repos with no remotes |
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--depth` | `-L` | `3` | Max directory depth to search for repos |
+| `--dirty` | `-d` | off | Only show repos with uncommitted changes |
+| `--local` | `-l` | off | Only show repos with no remotes |
+| `--raw` | `-r` | off | One path per line, no decorations |
 
 ## How it works
 
