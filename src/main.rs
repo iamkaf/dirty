@@ -22,12 +22,12 @@ struct Args {
     #[arg(short, long)]
     local: bool,
 
-    /// Only show repos with unpushed commits (ahead of upstream)
+    /// Include unpushed commit info (ahead of upstream) in the output
     ///
     /// Note: this requires resolving the upstream tracking branch, which is slower,
     /// so it is only computed when this flag is set.
-    #[arg(long)]
-    unpushed: bool,
+    #[arg(short = 'u', long)]
+    include_unpushed: bool,
 
     /// Raw output for piping (one path per line)
     #[arg(short, long)]
@@ -118,12 +118,8 @@ fn run(args: Args) -> Result<(), String> {
     let repos = find_repos(&base, args.depth);
     let infos: Vec<_> = repos
         .par_iter()
-        .filter_map(|p| inspect_repo(p, args.unpushed))
-        .filter(|i| {
-            (!args.dirty || i.dirty)
-                && (!args.local || i.local_only)
-                && (!args.unpushed || i.ahead.unwrap_or(0) > 0)
-        })
+        .filter_map(|p| inspect_repo(p, args.include_unpushed))
+        .filter(|i| (!args.dirty || i.dirty) && (!args.local || i.local_only))
         .collect();
 
     if infos.is_empty() {
@@ -141,10 +137,14 @@ fn run(args: Args) -> Result<(), String> {
         } else {
             let dirty = if info.dirty { "\x1b[31m*\x1b[0m" } else { " " };
             let local = if info.local_only { " \x1b[33m[local]\x1b[0m" } else { "" };
-            let unpushed = if args.unpushed {
-                let n = info.ahead.unwrap_or(0);
-                // blue
-                format!(" \x1b[34m[↑{n}]\x1b[0m")
+            let unpushed = if args.include_unpushed {
+                match info.ahead {
+                    Some(n) if n > 0 => {
+                        // blue
+                        format!(" \x1b[34m[↑{n}]\x1b[0m")
+                    }
+                    _ => String::new(),
+                }
             } else {
                 String::new()
             };
