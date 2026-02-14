@@ -1,5 +1,5 @@
 use clap::Parser;
-use git2::{Repository, StatusOptions};
+use git2::{BranchType, Repository, StatusOptions};
 use rayon::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -22,6 +22,13 @@ struct Args {
     #[arg(short, long)]
     local: bool,
 
+    /// Only show repos with unpushed commits (ahead of upstream)
+    ///
+    /// Note: this requires resolving the upstream tracking branch, which is slower,
+    /// so it is only computed when this flag is set.
+    #[arg(long)]
+    unpushed: bool,
+
     /// Raw output for piping (one path per line)
     #[arg(short, long)]
     raw: bool,
@@ -31,6 +38,7 @@ struct RepoInfo {
     path: PathBuf,
     dirty: bool,
     local_only: bool,
+    ahead: Option<usize>,
 }
 
 fn find_repos(base: &Path, max_depth: usize) -> Vec<PathBuf> {
@@ -59,7 +67,25 @@ fn collect_repos(dir: &Path, max_depth: usize, depth: usize, repos: &mut Vec<Pat
     }
 }
 
-fn inspect_repo(path: &Path) -> Option<RepoInfo> {
+fn ahead_of_upstream(repo: &Repository) -> Option<usize> {
+    // Detached HEAD or unborn branch will fail here.
+    let head = repo.head().ok()?;
+    let head_oid = head.target()?;
+
+    // Resolve upstream tracking branch via Branch API.
+    let name = head.shorthand()?;
+    let branch = repo.find_branch(name, BranchType::Local).ok()?;
+    let upstream = branch.upstream().ok()?;
+
+    let upstream_ref = upstream.get();
+    let upstream_oid = upstream_ref.target()?;
+
+    // ahead/behind count vs upstream
+    let (ahead, _behind) = repo.graph_ahead_behind(head_oid, upstream_oid).ok()?;
+    Some(ahead)
+}
+
+fn inspect_repo(path: &Path, compute_unpushed: bool) -> Option<RepoInfo> {
     let repo = Repository::open(path).ok()?;
 
     let mut opts = StatusOptions::new();
@@ -69,10 +95,17 @@ fn inspect_repo(path: &Path) -> Option<RepoInfo> {
     let dirty = !repo.statuses(Some(&mut opts)).ok()?.is_empty();
     let local_only = repo.remotes().ok().is_none_or(|r| r.is_empty());
 
+    let ahead = if compute_unpushed {
+        ahead_of_upstream(&repo)
+    } else {
+        None
+    };
+
     Some(RepoInfo {
         path: path.to_path_buf(),
         dirty,
         local_only,
+        ahead,
     })
 }
 
@@ -85,8 +118,12 @@ fn run(args: Args) -> Result<(), String> {
     let repos = find_repos(&base, args.depth);
     let infos: Vec<_> = repos
         .par_iter()
-        .filter_map(|p| inspect_repo(p))
-        .filter(|i| (!args.dirty || i.dirty) && (!args.local || i.local_only))
+        .filter_map(|p| inspect_repo(p, args.unpushed))
+        .filter(|i| {
+            (!args.dirty || i.dirty)
+                && (!args.local || i.local_only)
+                && (!args.unpushed || i.ahead.unwrap_or(0) > 0)
+        })
         .collect();
 
     if infos.is_empty() {
@@ -104,7 +141,14 @@ fn run(args: Args) -> Result<(), String> {
         } else {
             let dirty = if info.dirty { "\x1b[31m*\x1b[0m" } else { " " };
             let local = if info.local_only { " \x1b[33m[local]\x1b[0m" } else { "" };
-            println!(" {dirty} {rel}{local}");
+            let unpushed = if args.unpushed {
+                let n = info.ahead.unwrap_or(0);
+                // blue
+                format!(" \x1b[34m[↑{n}]\x1b[0m")
+            } else {
+                String::new()
+            };
+            println!(" {dirty} {rel}{local}{unpushed}");
         }
     }
 
@@ -169,8 +213,8 @@ mod tests {
         let clean = setup_repo(tmp.path(), "clean", false, true);
         let dirty = setup_repo(tmp.path(), "dirty", true, true);
 
-        assert!(!inspect_repo(&clean).unwrap().dirty);
-        assert!(inspect_repo(&dirty).unwrap().dirty);
+        assert!(!inspect_repo(&clean, false).unwrap().dirty);
+        assert!(inspect_repo(&dirty, false).unwrap().dirty);
     }
 
     #[test]
@@ -179,8 +223,8 @@ mod tests {
         let with_remote = setup_repo(tmp.path(), "remote", false, true);
         let no_remote = setup_repo(tmp.path(), "local", false, false);
 
-        assert!(!inspect_repo(&with_remote).unwrap().local_only);
-        assert!(inspect_repo(&no_remote).unwrap().local_only);
+        assert!(!inspect_repo(&with_remote, false).unwrap().local_only);
+        assert!(inspect_repo(&no_remote, false).unwrap().local_only);
     }
 
     #[test]

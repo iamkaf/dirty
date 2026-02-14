@@ -33,6 +33,7 @@ dirty -L 1 <path>         # scan immediate subdirectories only
 dirty -d <path>           # only dirty repos
 dirty -l <path>           # only local-only repos
 dirty -dlr <path>         # dirty + local, raw paths for piping
+dirty --unpushed <path>   # only repos with unpushed commits (ahead of upstream)
 ```
 
 | Flag | Short | Default | Description |
@@ -40,6 +41,7 @@ dirty -dlr <path>         # dirty + local, raw paths for piping
 | `--depth` | `-L` | `3` | Max directory depth to search for repos |
 | `--dirty` | `-d` | off | Only show repos with uncommitted changes |
 | `--local` | `-l` | off | Only show repos with no remotes |
+| `--unpushed` |  | off | Only show repos with unpushed commits (ahead of upstream) |
 | `--raw` | `-r` | off | One path per line, no decorations |
 
 ## How it works
