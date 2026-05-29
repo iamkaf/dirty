@@ -211,26 +211,28 @@ mod tests {
     use super::*;
     use std::process::Command;
 
+    fn git(dir: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?} failed");
+    }
+
     fn setup_repo(tmp: &Path, name: &str, dirty: bool, add_remote: bool) -> PathBuf {
         let dir = tmp.join(name);
         fs::create_dir_all(&dir).unwrap();
-        Command::new("git")
-            .args(["init", "-q"])
-            .current_dir(&dir)
-            .status()
-            .unwrap();
+        git(&dir, &["init", "-q"]);
+        git(&dir, &["config", "user.email", "dirty@example.invalid"]);
+        git(&dir, &["config", "user.name", "Dirty Tests"]);
         // need an initial commit so status works cleanly
-        Command::new("git")
-            .args(["commit", "--allow-empty", "-m", "init", "-q"])
-            .current_dir(&dir)
-            .status()
-            .unwrap();
+        git(&dir, &["commit", "--allow-empty", "-m", "init", "-q"]);
         if add_remote {
-            Command::new("git")
-                .args(["remote", "add", "origin", "https://example.com/repo.git"])
-                .current_dir(&dir)
-                .status()
-                .unwrap();
+            git(
+                &dir,
+                &["remote", "add", "origin", "https://example.com/repo.git"],
+            );
         }
         if dirty {
             fs::write(dir.join("untracked.txt"), "hello").unwrap();
@@ -307,11 +309,7 @@ mod tests {
             .unwrap()
             .stdout;
         let short_oid = String::from_utf8(oid).unwrap().trim().to_owned();
-        Command::new("git")
-            .args(["checkout", "--detach", "-q"])
-            .current_dir(&repo)
-            .status()
-            .unwrap();
+        git(&repo, &["checkout", "--detach", "-q"]);
 
         assert_eq!(
             inspect_repo(&repo, false, true).unwrap().branch,
