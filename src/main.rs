@@ -29,6 +29,10 @@ struct Args {
     #[arg(short = 'u', long)]
     include_unpushed: bool,
 
+    /// Show the current branch in the output
+    #[arg(short = 'b', long)]
+    branch: bool,
+
     /// Raw output for piping (one path per line)
     #[arg(short, long)]
     raw: bool,
@@ -38,6 +42,7 @@ struct RepoInfo {
     path: PathBuf,
     dirty: bool,
     local_only: bool,
+    branch: Option<String>,
     ahead: Option<usize>,
 }
 
@@ -85,7 +90,17 @@ fn ahead_of_upstream(repo: &Repository) -> Option<usize> {
     Some(ahead)
 }
 
-fn inspect_repo(path: &Path, compute_unpushed: bool) -> Option<RepoInfo> {
+fn current_branch(repo: &Repository) -> Option<String> {
+    let head = repo.head().ok()?;
+    if head.is_branch() {
+        return head.shorthand().map(str::to_owned);
+    }
+
+    let oid = head.target()?;
+    Some(format!("detached:{}", &oid.to_string()[..7]))
+}
+
+fn inspect_repo(path: &Path, compute_unpushed: bool, compute_branch: bool) -> Option<RepoInfo> {
     let repo = Repository::open(path).ok()?;
 
     let mut opts = StatusOptions::new();
@@ -100,11 +115,17 @@ fn inspect_repo(path: &Path, compute_unpushed: bool) -> Option<RepoInfo> {
     } else {
         None
     };
+    let branch = if compute_branch {
+        current_branch(&repo)
+    } else {
+        None
+    };
 
     Some(RepoInfo {
         path: path.to_path_buf(),
         dirty,
         local_only,
+        branch,
         ahead,
     })
 }
@@ -118,7 +139,7 @@ fn run(args: Args) -> Result<(), String> {
     let repos = find_repos(&base, args.depth);
     let infos: Vec<_> = repos
         .par_iter()
-        .filter_map(|p| inspect_repo(p, args.include_unpushed))
+        .filter_map(|p| inspect_repo(p, args.include_unpushed, args.branch))
         .filter(|i| (!args.dirty || i.dirty) && (!args.local || i.local_only))
         .collect();
 
@@ -131,12 +152,25 @@ fn run(args: Args) -> Result<(), String> {
     }
 
     for info in &infos {
-        let rel = info.path.strip_prefix(&base).unwrap_or(&info.path).display();
+        let rel = info
+            .path
+            .strip_prefix(&base)
+            .unwrap_or(&info.path)
+            .display();
         if args.raw {
             println!("{rel}");
         } else {
             let dirty = if info.dirty { "\x1b[31m*\x1b[0m" } else { " " };
-            let local = if info.local_only { " \x1b[33m[local]\x1b[0m" } else { "" };
+            let branch = info
+                .branch
+                .as_ref()
+                .map(|name| format!(" \x1b[36m[{name}]\x1b[0m"))
+                .unwrap_or_default();
+            let local = if info.local_only {
+                " \x1b[33m[local]\x1b[0m"
+            } else {
+                ""
+            };
             let unpushed = if args.include_unpushed {
                 match info.ahead {
                     Some(n) if n > 0 => {
@@ -148,14 +182,17 @@ fn run(args: Args) -> Result<(), String> {
             } else {
                 String::new()
             };
-            println!(" {dirty} {rel}{local}{unpushed}");
+            println!(" {dirty} {rel}{branch}{local}{unpushed}");
         }
     }
 
     if !args.raw {
         let dirty_count = infos.iter().filter(|i| i.dirty).count();
         let local_count = infos.iter().filter(|i| i.local_only).count();
-        println!("\n{} repos, {dirty_count} dirty, {local_count} local-only", infos.len());
+        println!(
+            "\n{} repos, {dirty_count} dirty, {local_count} local-only",
+            infos.len()
+        );
     }
 
     Ok(())
@@ -177,7 +214,11 @@ mod tests {
     fn setup_repo(tmp: &Path, name: &str, dirty: bool, add_remote: bool) -> PathBuf {
         let dir = tmp.join(name);
         fs::create_dir_all(&dir).unwrap();
-        Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap();
+        Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&dir)
+            .status()
+            .unwrap();
         // need an initial commit so status works cleanly
         Command::new("git")
             .args(["commit", "--allow-empty", "-m", "init", "-q"])
@@ -213,8 +254,8 @@ mod tests {
         let clean = setup_repo(tmp.path(), "clean", false, true);
         let dirty = setup_repo(tmp.path(), "dirty", true, true);
 
-        assert!(!inspect_repo(&clean, false).unwrap().dirty);
-        assert!(inspect_repo(&dirty, false).unwrap().dirty);
+        assert!(!inspect_repo(&clean, false, false).unwrap().dirty);
+        assert!(inspect_repo(&dirty, false, false).unwrap().dirty);
     }
 
     #[test]
@@ -223,8 +264,8 @@ mod tests {
         let with_remote = setup_repo(tmp.path(), "remote", false, true);
         let no_remote = setup_repo(tmp.path(), "local", false, false);
 
-        assert!(!inspect_repo(&with_remote, false).unwrap().local_only);
-        assert!(inspect_repo(&no_remote, false).unwrap().local_only);
+        assert!(!inspect_repo(&with_remote, false, false).unwrap().local_only);
+        assert!(inspect_repo(&no_remote, false, false).unwrap().local_only);
     }
 
     #[test]
@@ -234,5 +275,47 @@ mod tests {
         fs::create_dir_all(parent.join("child/.git")).unwrap();
 
         assert_eq!(find_repos(tmp.path(), 5).len(), 1);
+    }
+
+    #[test]
+    fn inspect_includes_branch_when_requested() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = setup_repo(tmp.path(), "repo", false, true);
+        let branch = Command::new("git")
+            .args(["branch", "--show-current"])
+            .current_dir(&repo)
+            .output()
+            .unwrap()
+            .stdout;
+        let branch = String::from_utf8(branch).unwrap().trim().to_owned();
+
+        assert_eq!(
+            inspect_repo(&repo, false, true).unwrap().branch,
+            Some(branch)
+        );
+        assert_eq!(inspect_repo(&repo, false, false).unwrap().branch, None);
+    }
+
+    #[test]
+    fn inspect_shows_detached_head_when_requested() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = setup_repo(tmp.path(), "repo", false, true);
+        let oid = Command::new("git")
+            .args(["rev-parse", "--short=7", "HEAD"])
+            .current_dir(&repo)
+            .output()
+            .unwrap()
+            .stdout;
+        let short_oid = String::from_utf8(oid).unwrap().trim().to_owned();
+        Command::new("git")
+            .args(["checkout", "--detach", "-q"])
+            .current_dir(&repo)
+            .status()
+            .unwrap();
+
+        assert_eq!(
+            inspect_repo(&repo, false, true).unwrap().branch,
+            Some(format!("detached:{short_oid}"))
+        );
     }
 }

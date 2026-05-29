@@ -33,7 +33,9 @@ dirty -L 1 <path>         # scan immediate subdirectories only
 dirty -d <path>           # only dirty repos
 dirty -l <path>           # only local-only repos
 dirty -dlr <path>         # dirty + local, raw paths for piping
+dirty -b <path>           # include current branch in the output
 dirty -u <path>           # include unpushed commits info (ahead of upstream)
+dirty --branch <path>
 dirty --include-unpushed <path>
 ```
 
@@ -42,6 +44,7 @@ dirty --include-unpushed <path>
 | `--depth` | `-L` | `3` | Max directory depth to search for repos |
 | `--dirty` | `-d` | off | Only show repos with uncommitted changes |
 | `--local` | `-l` | off | Only show repos with no remotes |
+| `--branch` | `-b` | off | Show the current branch |
 | `--include-unpushed` | `-u` | off | Include unpushed commit info (ahead of upstream) |
 | `--raw` | `-r` | off | One path per line, no decorations |
 
